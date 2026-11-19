@@ -1,0 +1,601 @@
+Opt-in chat assistant and issue tracking, 10 November 2026 (zip 20261110)
+- Short replies follow a name, a verified quote of a bot post, or a supported question about the linked repo.
+- Automatic issue creation and owner-only issue updates require per-chat opt-in and a linked private repository.
+  Reply and write reservations persist across restarts. Both features default to off.
+- Windows with Node 26.4.0. Unit tests 441 passed, 5 skipped. Simulated end-to-end 13 passed.
+- Fake PythonAnywhere installer and rollback 10 passed with existing dependencies. Linux permissions and the
+  production installation require host verification.
+
+GitHub changes, Google Docs/Sheets/Slides, AI drafts and confirm codes, 7 November 2026 (zip 20261107b; includes everything below)
+- Owner's choices (asked 7 Nov): Google through a service account that sees only files shared with it; plain commands
+  plus AI drafts; only the owner writes, with a confirm code for anything that removes, closes, merges or replaces;
+  GitHub issues and comments, repository files, pull requests and commits.
+- GitHub (src/github-changes.js, src/github.js): read #N with comments, files, commits; comment and label at once;
+  close/reopen, title/body (refused if updated_at moved), delete issue (GraphQL deleteIssue, admin only), edit/delete
+  comment, merge (sends the head sha the preview saw; drafts and conflicts refused), close PR, write/delete a file
+  (contents API with the sha seen), revert a commit (Git Data API: one new commit restoring the parent's blobs; refuses
+  merge commits, renames, >20 files, files changed again since, a moved branch head). File changes and reverts go on
+  a new branch whatsapp/<stamp>-<slug> with a pull request (github.changes "pull") or onto the default branch
+  ("direct", fast-forward only). github.maxWritesPerHour 30. Token now needs Contents/Issues/Pull requests: RW.
+- Google (src/google.js by a subagent from a written spec, reviewed here; src/google-commands.js): RS256 JWT to the
+  fixed token URL, cached tokens, fixed API hosts, redirect "error", key file must be 0600 on Linux, plain errors that
+  never carry the key or token (and a 403 that says when an API is off). Chats reach only chats[].googleFiles by
+  name (console: google "<chat>" --add <link> --name <n> | --remove | --members). Read: doc, sheet [range], slides.
+  At once: doc append, sheet add (row), slides add. With a code: doc replace and slides delete/replace (pinned to the
+  revision read), sheet set/clear. Values RAW. google.maxWritesPerHour 30.
+- Confirm codes (src/pending.js): 4 digits, 2 minutes, once, per chat, owner only, at most 5 waiting, memory only.
+- AI drafts (draft command in src/commands.js, src/drafts.js, mode "draft" in src/summarise.js): owner only, one AI
+  request with the ask budget; the target is read first and given as data with the allowed actions; the JSON answer
+  is checked per target; every draft waits for the code; links not already in the target become [link]; a cut-off
+  answer is a failure; no hub folder for drafts.
+RESULTS_PENDING
+
+A spotted request becomes a GitHub issue in one step, 7 November 2026 (zip 20261107a; includes everything below)
+- "!bot github issue N" now also takes a request the AI spotted that nobody kept (status suggested). Inside the
+  one-request-per-chat guard it checks the hourly issue limit, then keeps the request exactly as "keep N" does
+  (default reminder leadHours before its deadline, source = the command message), then opens the issue. The issue
+  body says it was spotted by the AI. A busy chat, a member's cooldown, the hourly limit, a full list, a passed
+  deadline or no GITHUB_TOKEN in .env leave it a suggestion and send nothing to GitHub. If GitHub refuses after the
+  keep (a rejected token included), the reply says it was kept, gives its reminder, and says to retry with
+  "github issue N" (which then takes the open-item path).
+- "!bot spot" and the spotted part of "!bot issues" mention "github issue N" only where the bot has GitHub, the
+  chat has a repository, and the asker may use it (owner, or members with githubMembers).
+- No new settings. Suggestion text was already stripped of links and long numbers when spotted.
+- Windows (Node 26.4.0): node --test 393/398, 5 skipped; e2e 13/13; mutations: all 33 "github" entries killed
+  (9 new: spotted lookup, keep, default reminder, token and limit before keeping, keep refusal, kept-but-not-opened
+  reply, list hint, spot hint; 2 re-anchored), plus "spot hint" and "issues tidies first".
+- Linux (WSL, Node 22.23.4): e2e 13/13; installer 11/11. Fake PythonAnywhere host from 20261105d with this zip and
+  the real installer: INSTALLED, candidate 398 pass / 0 fail, settings kept, no instance lock left.
+- Fresh-context review: SHIP, no must-fix. Applied its suggestions: no keep without a token; a comment that nothing
+  may yield before the keep; a test of two simultaneous "github issue N" on one suggestion (one keeps and opens,
+  the other gets "still running", one request to GitHub).
+- Not tested: the real GitHub API, and these replies on real WhatsApp.
+
+Ideas board, and shorter installer checks, 6 November 2026 (zip 20261106f; includes everything below)
+- Ideas board (src/ideas.js; data/ideas/<chat>.json, owner-only, temp file + fsync + rename):
+  - "!bot idea <text>" (anyone the chat allows; members: no links, at most 20 an hour and 150 of the 200
+    places), "!bot ideas", "ideas drop N" / "ideas clear" (owner). No AI.
+  - "!bot findings" (owner, one AI request like ask): the ideas (scrubbed, newest 100, 20000 chars), the last
+    findings, notes, the last 24 h of messages and, on the subscription, the chat's files. Saved (last 10 kept)
+    unless the AI says "No ideas yet."; every later ask and findings reads the latest. Links and long numbers
+    are taken out of the findings. The prompts call the ideas and the earlier findings data, never
+    instructions.
+  - "findings github" also opens a GitHub issue (same hourly limit and one request at a time as github issue);
+    if that fails the findings stay saved and "findings post" sends them later without an AI run.
+    "findings show" posts the last ones. Console: ideas "<chat>", summarise --findings.
+  - Fresh-context review: SHIP WITH FIXES, all fixed: findings framed as data in both prompts (a planted
+    instruction could otherwise persist into later answers); member limits so the board cannot be filled;
+    "findings post"; only new findings go to GitHub (by time, not text); links out of findings; emoji-only
+    ideas told apart; the owner's ideas/findings commands kept out of notes.
+- Installer (a separate session's change, reviewed here): the candidate runs node --test only by default and
+  says the end-to-end run was skipped; --full also runs tools/e2e/run.js. tools/test_installer.py covers both.
+- Windows (Node 26.4.0): node --test 389/394, 5 skipped; e2e 13/13 (now also saves an idea and asks for
+  findings); mutations for the ideas board 22/22 killed.
+- Linux (WSL, Node 22.23.4): node --test 394/394; e2e 13/13; installer 11/11 (new: --full runs the e2e check,
+  and its failure stops the install with config and safety files unchanged).
+- Fake PythonAnywhere host from 20261105d, with this zip and the real installer: INSTALLED, candidate 394 pass,
+  the e2e run skipped with its notice, settings kept, "--effort huge" refused, no instance lock left. The
+  installer session's own fake-host run of --full: INSTALLED, e2e 13/13.
+- Measured by the installer session (WSL): the e2e run is 119 s of wall time but 2.9 CPU-seconds; node --test
+  is about 16 CPU-seconds. A default install took 14 s and 20 CPU-seconds, --full 132 s and 21. So the change
+  saves time, not CPU: the installer was not what used up the supervisor's daily CPU budget.
+- Not tested: a real AI findings run, and the ideas commands on real WhatsApp.
+
+Fix to the loading timeout, 6 November 2026 (zip 20261106e; replaces 20261106d, includes everything below)
+- Review of 20261106d's loading timeout: SHIP WITH FIXES. A WhatsApp Web page reload makes whatsapp-web.js inject
+  again (Client.js framenavigated -> inject -> onAppStateHasSyncedEvent), which repeats "authenticated" and
+  "ready". The repeated "authenticated" started a new timer, and the repeated "ready" returned before clearing
+  it, so a healthy bot would have stopped itself 5 minutes later. Now every "ready" clears the timer first.
+- e2e: the instructions run (10 s timeout, about 22 s long) now also "reloads" WhatsApp Web a second after it is
+  ready. Moving the clear back below the guard (the 20261106d code) is caught by the mutation check.
+- README: a first link on a large account may need a longer startup.readyTimeoutSeconds.
+- Windows (Node 26.4.0): node --test 379/384, 5 skipped; e2e 13/13. Mutations: 180/180 killed: 168 in the full
+  run, and 12 after fixing two faults in the checks themselves. The concurrency test used to hang instead of
+  failing when its guard was removed; it now races a 1 s timer (a test-only change, after the zip). One mutation
+  anchor was stale.
+- Linux (WSL, Node 22.23.4): node --test 384/384; installer 10/10.
+- Fake PythonAnywhere host from 20261105d, with the real installer: INSTALLED, candidate 384 pass, e2e 13/13,
+  settings kept. The GitHub console command links and unlinks (without a token it reports "Not checked"),
+  "--effort huge" is refused, and no instance lock is left.
+
+GitHub issues and pull requests, 6 November 2026 (zip 20261106d; includes 20261106c, b and a below)
+- src/github.js: a fine-grained GITHUB_TOKEN from .env, read at each use. Requests go only to
+  https://api.github.com/repos/<chat's githubRepo>/..., never follow redirects, and time out after
+  github.timeoutSeconds (15). Errors become plain words and never carry the token or GitHub's reply text. Titles,
+  logins and branch names from GitHub are shown as one cleaned line each; only https://github.com/ links are
+  posted.
+- Chat: "!bot github issue <title> | issue N | issues | prs | pr N" (also "gh"). Owner only unless the chat is
+  linked with --members (chats[].githubMembers). Members can't put links in titles. At most
+  github.maxIssuesPerHour (10) issues an hour across chats. An item becomes an issue once, and the list shows
+  "GitHub #N". "merge" is refused; nothing closes, comments or changes code.
+- Console: github "<chat>" [--repo OWNER/REPO [--members] | --off] changes only that chat's two fields (the bot
+  reloads them) and checks that the token can see the repository.
+- Fresh-context review: SHIP WITH FIXES. No way found to reach another repository or host, or to leak the
+  token. Fixed:
+  - Text from GitHub goes through stripLinksAndNumbers. A public repository's issue title could otherwise post
+    a phishing link into the group from the owner's account.
+  - One GitHub request per chat at a time, github.cooldownSeconds (10) apart. Before, members could make
+    unlimited reads, and two "issue N" at once opened two issues.
+  - Docs: the token can close and comment on issues (the bot has no command for it); "issue N" sends the item's
+    text and times; resource owner and organisation approval; the hourly limit restarts with the bot.
+  - Re-review: SHIP. Also done: the owner's GitHub commands skip the cooldown (a member can't keep them waiting),
+    and the docs say a bare unusual domain (something.zip) can still get through the link filter.
+- WhatsApp Web stuck after the login (src/bot.js): on the server, the worker sat at "Account linked. Loading
+  chats..." for 10 minutes, and Chrome used up the supervisor's daily CPU budget. Now the bot stops by itself
+  (exit 1, no pause, lock released) if "ready" has not come startup.readyTimeoutSeconds (300) after the login.
+  The log shows the loading progress in steps of 25%.
+- Windows (Node 26.4.0): node --test 379/384, 5 skipped; e2e 13/13. New end-to-end checks: the owner's "!bot
+  github prs" in a chat with no repository, and a WhatsApp Web that never loads.
+- When this zip was made, the full mutation run, the Linux tests and the fake-host install of this exact build
+  were still running. The build just before the review fixes passed all three (Linux 381/381, fake host
+  INSTALLED with the GitHub console command working, no lock left). The installer reruns every test on the
+  server before it changes anything.
+- Not tested: the real GitHub API, and the chat commands on real WhatsApp.
+
+Thinking harder on request, 6 November 2026 (zip 20261106c; includes 20261106b and 20261106a below)
+- src/effort.js; owner only, temporary, in memory only.
+  - "!bot ask+ <question>": one answer at summary.boostEffort ("high"), or the chat's own effort if higher.
+  - "!bot effort <low|medium|high|xhigh|max> [2h | 30m]": that chat's summaries, answers and spotted requests
+    use it until then (1 hour by default, at most summary.maxBoostHours, 12). "!bot effort" shows it;
+    "reset" ends it. Condensing and other chats keep summary.effort. A restart or pause also ends it.
+  - Console: summarise --effort <level>, checked before the lock is taken. A chat request cannot pass an effort.
+  - Answers say "<level> effort" in their header when it differs from the default. The owner's effort commands
+    stay out of the notes.
+- Fresh-context review: SHIP WITH FIXES; no way found for a member or a message to raise the effort. Fixed:
+  - On the API, high effort and above get max_tokens 16000 (spotting too). A reply cut off at the limit ends
+    with "(Cut off at the length limit.)"; with no text, or a cut-off to-do list, the run counts as failed.
+    Before, an empty cut-off reply would have been posted as "Nothing important.".
+  - A member's summary (summary.ownerOnly off) keeps summary.effort; the docs said members start no AI run,
+    which holds only while ownerOnly is on.
+  - The condense filter matches only the real effort command forms; the end time is rounded up to the minute
+    shown; at least one minute; --effort is refused with --dry-run and transcript; docs list off/default.
+  - Not re-reviewed after these fixes.
+- Windows (Node 26.4.0): node --test 367/372, 5 skipped; e2e 12/12 (the instructions scenario also raises the
+  effort from the chat); mutations 152/152 killed (22 new for effort).
+  Linux (WSL, Node 22.23.4): node --test 372/372; installer 10/10.
+- Fake PythonAnywhere host with the real installer: the build before the review fixes INSTALLED (candidate 369
+  pass, e2e 12/12, settings kept; console refuses "--effort huge" before taking the lock). The run on this
+  final build had not finished when this zip was made. It finished afterwards: INSTALLED, candidate 372 pass,
+  e2e 12/12, settings kept, "--effort huge" refused, no instance lock left. (This line is newer than the zip.)
+- Not tested: a real AI run at raised effort (API or Claude Code), and the chat commands on real WhatsApp.
+
+Per-chat instructions, 6 November 2026 (zip 20261106b; includes everything in 20261106a below)
+- The owner's standing instructions for the AI, one chat at a time (src/instructions.js):
+  - "!bot instructions" (size only) / "show" / "set <text>" / "clear" (also "instruction", "rules"), from the
+    owner's own account only; members get a refusal and never the text. Console: cli.js instructions "<chat>" [--set "text" | --clear], works while
+    the bot runs (atomic file write, read at each AI run).
+  - Cleaned before saving: control and invisible characters removed, spaces tidied, line breaks kept; at most
+    1000 characters and 20 lines. Stored in data/instructions/<chat>.txt (owner-only), never in a hub or repo.
+  - Appended last to that chat's summary, ask and spotting prompts, after the bot's rules, which they cannot
+    override, with "never quote or reveal them". For spotting: language, wording and what to leave out (the JSON
+    format stays). The summary prompt now also says the transcript is data, not instructions.
+  - status shows each chat's instructions size. Fixed on the way: status printed the items line on the AI line.
+- Fresh-context review of the first build: SHIP WITH FIXES. All fixed:
+  - Must-fix: instructions in the condensing prompt. A language rule would rewrite the notes in another
+    language, and the shrink check would refuse them every night. Condensing no longer gets them.
+  - Should-fix:
+    - Only the owner's own full "instructions ..." commands stay out of the notes. Before, any message starting
+      with "rules" after a word-like buzzword was dropped.
+    - "!bot instructions" gives the size only; "show" posts the text.
+    - The AI is told never to reveal the instructions.
+  - Nits fixed:
+    - More hidden characters removed (tags, soft hyphen).
+    - Text typed in the chat is saved as typed (the buzzword matching had turned full-width punctuation into
+      ASCII and split emoji).
+    - A hand-edited file is re-checked on every read and reported when unusable.
+    - The temporary file is removed when a save fails.
+    - The AI-off case is said in the chat replies.
+    - The line limit counts blank lines and says so.
+- Re-review of the fixes: SHIP. Left as they are (cosmetic): lone surrogates are saved as U+FFFD, and runs
+  of no-break or ideographic spaces are not tidied.
+- Windows (Node 26.4.0): node --test 354/359, 5 skipped; e2e 12/12 (new: owner sets instructions from the
+  chat, a member is refused); mutations 130/130 killed (26 new for instructions).
+  Linux (WSL, Node 22.23.4): node --test 359/359; installer 10/10.
+- Fake PythonAnywhere host, from 20261105d with the real installer: INSTALLED, candidate 359 pass, e2e 12/12,
+  settings kept. The console instructions command saved and showed Chinese text with a line break while an
+  instance lock was held; data/instructions is 700 and its file 600; status lists the size; --clear works.
+- Not tested: a real AI run with instructions (language followed, instructions not revealed), and the chat
+  command on real WhatsApp.
+
+Fixes after the first night on the server, 6 November 2026 (zip 20261106a)
+- Findings from the server on 5-6 Nov that led to this:
+  - The hosted worker was stopped within seconds of every start by the supervisor's memory limit. Measured with
+    the supervisor's own code: the tree counts about 2.3 GB with a linked account; the old 1.28 GB figure was from
+    before linking. The owner raised max_rss_mb to 4096, and the worker ran.
+  - Chrome's leftover profile lock blocked every start on another machine and recorded a misleading
+    STARTUP_FAILURE pause.
+- Chrome profile lock (src/profile-lock.js): cleared before Chrome starts, while the bot holds its instance lock,
+  unless a live process on this machine holds it (then the bot refuses with a clear message and no pause).
+  A Chrome launch failure stops without a connection pause.
+- Message times in summaries, questions, condensing and the CLI transcript are reminders.timeZone (London), and
+  the AI is told so.
+- Clearer messages: cloning an empty repository; why a chat's files were not read (also when there are no
+  messages).
+- The AI is told to read INDEX.md first.
+- AI jobs only at set times or on request (the owner's wish):
+  - Spotting runs in the hour after reminders.detectTimes (["20:00"]) for chats with detect on, or on the owner's
+    "!bot spot" in any chat with AI on (cooldown summary.cooldownSeconds).
+  - Condensing runs only in the 3 hours after summary.condenseAt ("04:00"). Cold copies are still purged hourly.
+  - src/schedule.js; tested without WhatsApp.
+- Against spam floods: reminders.maxDetectPerChatPerDay (3) and maxDetectChars (20000) per spotting run.
+  Members can start no AI run.
+- Fresh-context review: SHIP WITH FIXES.
+  - Must-fix: `resume` in a console deleted a live worker's instance lock, because process ids mean nothing across
+    machines; that then made the new profile-lock clearing unsafe.
+    - Fixed: the lock records its host and a beat every minute. A lock from another machine counts as left over
+      only after 3 minutes without a beat (for resume and for taking over a summary lock).
+    - The profile lock is also kept while the profile changed in the last 3 minutes, and a live process id that
+      is not a Chrome on this profile (Linux /proc check) does not count.
+  - Should-fix, all fixed:
+    - spot ran with no way to post its answer;
+    - --since, notes and the condense log were in server time;
+    - a Chrome launch timeout recorded a pause;
+    - the condense backlog was invisible;
+    - schedule retries after a recent spot;
+    - outdated text.
+  - Not reviewed again after these fixes.
+- Windows (Node 26.4.0): node --test 341/346, 5 skipped; e2e 11/11; installer 9/9; mutations 104/104 killed.
+  Linux (WSL, Node 22.23.4): node --test 346/346; installer 10/10.
+- Fake PythonAnywhere host, from 20261105d (live-like config: group with detect, keepDays 3, provider
+  claude-code) with the real installer: INSTALLED, candidate 346 pass, e2e 11/11, settings kept, detectTimes and
+  condenseAt added, status/issues/detect --dry-run work, config.json and .env 600.
+- Not tested: on the real worker (profile-lock clearing on the deployment machine, the heartbeat across machines,
+  the 20:00 run and the 04:00 window), real WhatsApp replies to "!bot spot".
+
+Reminders, open items and spotting requests, 5 November 2026 (zip 20261105d)
+- Commands for anyone the chat's callers setting allows: remind <when> <what>, issue,
+  issues, keep N [when], drop N, done N. Times in reminders.timeZone (Europe/London) via
+  src/when.js: a fixed set of forms, refusal for anything else, wall-clock maths with
+  Intl (summer time, the March gap). Lists in data/items/<chat>.json (owner-only, temp
+  file + rename + fsync); they tidy themselves (suggestions expire, reminded items close,
+  closed items are forgotten), with separate caps for open items and suggestions.
+- Reminder timer (15 s): send setting re-read before each post, reply budget and pauses,
+  per-chat hourly cap, at most half of replies.maxPerHour, rotating start chat; claimed
+  atomically before sending (a drop/done/new time wins); 90 s send timeout counts as a
+  failed send; quotes the command message; lateGraceHours (>= 1) marks old ones as not
+  posted. Members cannot put links in reminders.
+- Spotting requests (chats[].detect, needs ai): timer every 10 min, cheap keyword
+  pre-check, oldest new messages pseudonymised and in London time, the chat's list
+  scrubbed alongside, JSON answer cleaned (links and long numbers removed, due only if
+  a real future local time), suggestions only. Own budget (maxDetectPerDay,
+  detectEveryMinutes); two failed runs skip the batch; a message deleted mid-run drops
+  the result; one subscription run per round.
+- Fresh-context review 1: SHIP WITH FIXES. Must-fix: parser misreading (5.30pm, commas,
+  time-first, 1700), list filling up for good, unscrubbed list text to the AI, a hung
+  send stopping all reminders. Should-fix: stale due list during a send, endless retry
+  of failed runs, bursts starving other chats and replies, unattributed posts, mid-run
+  deletions, planted links in suggestions, server-time transcripts, untested guards.
+  All fixed with tests.
+- Fresh-context review 2 (of those fixes): SHIP WITH FIXES; 8 of 12 fixed, 4 partly.
+  Must-fix: "Fri 20 Nov 17:00" (the bot's own format) misread; "5pm:", "5pm." and p.m. fell
+  back to 09:00. Should-fix: kept requests auto-closed before their deadline; an unwritable
+  list burnt the reply budget; failed sends shown as reminded; bare-domain links in
+  suggestions; "5pm sun cream" / "9am may 20 people" read as dates. Nits: hourly counts
+  reset on restart, member link filter too narrow, write errors leaked the server path,
+  issues listed expired suggestions, stale detect cursor, archive read before cheap
+  checks, small parser cases, same text at another time refused, reloaded reply limit.
+  All fixed with tests; the reviewer's own probe scripts re-run and now pass (two stop
+  early only because they set lateGraceHours 1, now refused). Not reviewed a third time.
+- Windows (Node 26.4.0): node --test 324/328, 4 skipped (POSIX modes); e2e 11/11;
+  installer 9/9; mutations 77/77 killed. Linux (WSL, Node 22.23.4): node --test 328/328;
+  e2e 11/11; installer 10/10.
+- Fake PythonAnywhere host: 20261105c with a chosen group, a family chat and
+  provider claude-code, then this zip with the real installer (npm included): INSTALLED,
+  candidate 328 pass, e2e 11/11, owner settings kept, reminders section added, status /
+  issues / detect --dry-run work, config.json and .env 600.
+- Not tested: real WhatsApp (reminder posts, quoting, sendSeen), the AI's actual answers
+  to the detect prompt, Claude Code memory during detect runs on the host.
+
+!bot sync: hub folders kept in step with a git repo, 5 November 2026 (zip 20261105c)
+- Owner-only "!bot sync" and CLI "sync <chat>" (plus --clone <url> [--key <path>],
+  --adopt). Git data in data/hub-git/<hub>.git with explicit --git-dir/--work-tree;
+  hub folders hold only files. Partial (blob:limit = hubs.maxSendMiB), single-branch,
+  no-tags clone; before any change: no missing objects (rev-list --missing=print,
+  --no-object-names), every blob sized and within the limit, <= hubs.maxSyncFiles,
+  <= hubs.maxSyncMiB, git objects <= 2x maxSyncMiB; output that does not fit refuses.
+  Fast-forward only. Runtime -c: hooksPath null, submodule.recurse/fsmonitor/
+  symlinks/maintenance.auto/gc.auto off, pack.threads=1, filter.lfs.* empty; env
+  allowlist + GIT_CONFIG_NOSYSTEM, GIT_CONFIG_GLOBAL=/dev/null|NUL,
+  GIT_LFS_SKIP_SMUDGE, GIT_NO_LAZY_FETCH, GIT_TERMINAL_PROMPT=0; detached, 60 s
+  timeout (SIGTERM, SIGKILL group / taskkill /T /F), waits for exit. Lock file per hub
+  (pid+host+time; stale if dead on this host or > 20 min) shared by sync and the AI.
+- Probes (WSL git 2.53, Windows git 2.54): separate git dir + checkout works; pushed
+  symlink becomes a plain file; 95 MB blob fetch took ~200 MB RSS without the
+  filter; with blob:limit the 5 MB blob stayed remote (fetch peak 5.4 MB) and was
+  reported missing without a lazy fetch.
+- Three fresh-context reviews: (1) SHIP WITH FIXES: memory, symlinks, Windows kill,
+  enclosing repo, system/global config, maintenance, SIGKILL locks, .git readable
+  by the AI -> redesign; (2) SHIP WITH FIXES: truncated check output, adopt not
+  partial, unbounded history, in-process lock only, timeout cleanup -> all fixed;
+  not re-reviewed after these last fixes (covered by tests and mutations).
+- Windows (Node 26.4.0): node --test 292/295, 3 skipped; e2e 11/11; installer 9/9;
+  mutations 38/38 killed (12 for sync). Linux (WSL): node --test 295/295; e2e 11/11;
+  installer 10/10.
+- Not tested: GitHub itself (ssh deploy key, partial-clone filter on github.com),
+  git on PythonAnywhere (version unknown; --no-object-names needs a recent git),
+  "!bot sync" through real WhatsApp.
+
+Per-chat AI limits and condensing old messages into notes, 5 November 2026 (zip 20261105b)
+- chats[].aiPerDay (default 3): summaries + questions per chat per 24 h, inside the
+  bot-wide limits; refusals reserve nothing (reason chat_budget). Chooser asks it,
+  and keepDays, only when AI is on.
+- chats[].keepDays (default 0 = off): hourly in the worker (first after 10 min,
+  starting chat rotates) and via CLI condense, messages older than keepDays go,
+  oldest batch first, pseudonymised, with the chat's notes to the AI; notes saved,
+  then the batch is taken out of the archive. Separate budget: maxCondensePerDay 4,
+  condenseEveryHours 6 (max 24). Timer/CLI only, never a chat message; never sends.
+- Fail closed: AI error, empty answer, API max_tokens stop, answer over
+  maxNotesChars (max 8000; condense max_tokens min(16000, 2x)), or new notes under
+  half the old length -> nothing written, nothing deleted. A message revoked during
+  the call -> retried without it. Raw copies of taken messages go to
+  data/condensed/ first (condensedKeepDays 30); notes versions to data/notes/history
+  (newest 10). Only bare command words skip the AI. Revoked records older than the
+  cutoff leave the archive with their markers and are never copied.
+- !bot ask reads the chat's notes (works with notes and no recent messages);
+  summaries never do. !bot notes (owner) replies with size only; text via CLI notes.
+- Pause messages print a resume command that works on the machine (private Node on
+  PythonAnywhere instead of npm.cmd).
+- Fresh-context review: DO NOT SHIP with 3 must-fixes (empty answer deleted
+  messages; unchecked notes replacement and truncation; word-like buzzword "noise"
+  deleted member messages) and 5 should-fixes (notes posted in group; scrubbed
+  links lost; condenseEveryHours > 24 ignored; starvation; revoked-mid-run). All
+  applied except link extraction (documented; cold copy keeps originals 30 days).
+- Second fresh-context review: all seven items PASS; SHIP WITH FIXES. Applied:
+  cold copies purged hourly for every chat (also keepDays 0 / removed chats);
+  shrink guard against the longest notes version of the past week, capped at
+  maxNotesChars (no stuck chat after lowering it), history kept by age
+  (max(condensedKeepDays, 7) days) plus newest 10; an oversized oldest message is
+  sent whole, never cut; keepDays is 0 or 3-365 (delete-for-everyone window);
+  fsync on the cold copy and notes before the archive rewrite. Not changed:
+  id-less record dedup (recordOf always sets an id), --since summary note.
+- Windows (Node 26.4.0): node --test 277/280, 3 skipped (POSIX-only);
+  tools/e2e/run.js 11/11; tools/test_installer.py 9/9;
+  tools/check_guard_mutations.js 26/26 killed (10 new condensing/limit guards).
+- Linux (WSL, Node 22.23.4): node --test 280/280; e2e 11/11; installer 10/10.
+  Fake PythonAnywhere host from 20261030-2: npm swapped the library, candidate
+  280/280 and 11/11, INSTALLED, 11 items made owner-only.
+- Zip: work/whatsapp-spam-bot-update-20261105b.zip, 70 files (rebuilt after this
+  entry was written; only this file differs from the build tested on the fake host).
+- Not tested: the hourly timer inside a real running bot, condensing against a real
+  model (API or subscription), memory of a Claude Code run on PythonAnywhere.
+
+Per-chat labels, subscription runner and file hubs, 5 November 2026
+- Per-chat labels: HMAC(secret, chat + user), so one person is Member-xxxx differently
+  in each chat (all labels change once). Each AI request still carries one chat only.
+- summary.provider "claude-code" (src/claude-code.js): claude -p with --restricted,
+  --tools "" (or Read,Grep,Glob in the chat's hub), --disallowedTools "mcp__*",
+  --strict-mcp-config, --permission-mode dontAsk, --no-session-persistence, a
+  replaced system prompt; cwd an empty per-run folder (or the hub), deleted after;
+  env = PATH/locale + CLAUDE_CODE_OAUTH_TOKEN + fresh HOME/CLAUDE_CONFIG_DIR/TMPDIR +
+  no-CLAUDE.md/memory/prompt-history/nonessential-traffic/autoupdate switches; no
+  API keys. Owner-only regardless of chat settings; one run at a time; timeout kills
+  the process group; chat replies carry no paths, details go to the log. Flags and
+  env names checked against code.claude.com docs (CLI reference, authentication,
+  legal and compliance, permission modes, env vars, setup) on 5 Nov.
+- One real claude -p run (Claude Code 2.1.312 on Windows, this PC's own login, not
+  the sealed HOME/token path) with the runner's exact flags from an empty folder:
+  exit 0, type result, subtype success, is_error false, result "pong". The sealed
+  path with CLAUDE_CODE_OAUTH_TOKEN was not run for real (no token here).
+- "ask": owner-only with either provider, 1-500 characters, same AI budgets.
+- File hubs (src/hubs.js): hubs/<name>/ per chat, unique per chat (case-insensitive),
+  needs receive+send+buzzword; "files" and "send <name>" pick only from the folder's
+  own listing; links, hidden names and a hub that is a link are refused; size cap;
+  sent as a document. The AI gets a hub only with the subscription and only without
+  links. hubs/ is in the lockdown trees and in the installer's PRESERVE set (never
+  backed up or restored). Chrome no longer inherits API keys or the token.
+- Permissions review follow-ups applied: hard-linked files and other file systems
+  are left alone and reported; named links are reported; installer test now undoes
+  from a copied backup, follows no link or hard link out, and loosens files before
+  the final install.
+- Independent review (fresh context): SHIP, with seven should-fixes, all applied:
+  the AI's hub check walks the whole tree (hidden entries, any depth, size cap);
+  summaries never read the hub, only ask; no --allowedTools (a bare Read rule allows
+  any path); "@" in prompts neutralised (@ + zero-width space); every local failure
+  becomes a generic chat message with details in the log; a run still going when
+  the bot exits is killed (exit hook on the process group) and stale run-* folders
+  are removed when the AI service starts; a hub file that cannot be read is not
+  sent and no longer pauses replies, and files without a known type go out as
+  application/octet-stream. stdout/stderr decoded as UTF-8; "ask" alone is refused.
+- Windows (Node 26.4.0): node --test 254/257 with 3 skipped (POSIX-only link and
+  permission tests); tools/e2e/run.js 11/11; tools/test_installer.py 9/9.
+- Linux (WSL, Node 22.23.4): node --test 257/257; tools/e2e/run.js 11/11;
+  tools/test_installer.py 10/10. Fake PythonAnywhere host: npm via npm-cli.js swapped
+  the library, candidate 257/257 and 11/11, INSTALLED, 11 items made owner-only.
+  The seven follow-ups are covered by new tests; they were not re-reviewed.
+- Not tested: real WhatsApp (sending documents, ask/summary replies), the sealed
+  subscription run with a real setup-token, Claude Code on PythonAnywhere (install,
+  memory next to Chrome under the always-on task's limit), Python 3.10 at runtime.
+
+Owner-only private files, 5 November 2026
+- Change: src/cli.js sets umask 077 for every command. Before start/setup/choose/
+  chats, src/private-files.js removes group/other bits from the bot folder, the trees
+  .wwebjs_auth, data, logs and .runtime, and .env and config.json (lstat; links and
+  non-regular files are skipped; Windows is skipped). saveChats writes config.json
+  0600 and the logs folder is created 0700. The installer sets umask 077, applies the
+  same lockdown plus shared-bot-task-backups after install and after --undo, and
+  prints top-level changes as before -> after. The supervisor's own files (state/,
+  shared.json) are not touched.
+- Windows, Node 26.4.0: node --test 223/223 with 1 skipped (real-permissions test);
+  tools/e2e/run.js 11/11; tools/test_installer.py 9/9 (permissions scenario skipped).
+- Linux (WSL Ubuntu, Node 22.23.4 = the host's version, Python 3.14): node --test
+  224/224; tools/e2e/run.js 11/11; tools/test_installer.py 10/10 including the
+  owner-only scenario.
+- Fake PythonAnywhere host on Linux (20261030-2 code, npm's 1.34.7 from the registry,
+  Node without bin/npm, private files created 755/644, a link from data/ to
+  shared.json): the new installer ran npm through npm-cli.js ("changed 1 package"),
+  candidate checks 224/224 and 11/11, INSTALLED. Afterwards the bot folder, private
+  folders and backups were 700, private files 600, code 644 inside the 700 folder,
+  the linked shared.json still 644, no loose file in the backups. A bot started
+  from a loosened copy put the four top-level items back to 700/600, and a file
+  created by the CLI process came out 600.
+- Not tested: Chrome's own files under a real WhatsApp login (umask covers new ones,
+  the startup lockdown covers older ones), and the real host.
+
+WhatsApp Web ID rename fix, 5 November 2026 (Windows, Node 26.4.0)
+- Symptom on the host: the linked console run printed nothing for "!bot discover" or
+  any other message, even with logOtherChats on.
+- Cause: WhatsApp Web's July 2026 update renamed an ID's text form from _serialized to
+  $1. whatsapp-web.js 1.34.7, still the latest on npm, reads only _serialized, so every
+  message reached the router without an ID and was dropped in silence. Upstream fixed
+  it on main (58ddf15, 26 Sep 2026); no npm release has it.
+- Change: vendor/whatsapp-web.js-1.34.7-main.064a3d5.tgz, packed with --ignore-scripts
+  from upstream main at 064a3d5 (28 Sep 2026). Its version is renamed so npm replaces
+  the old copy; package.json depends on that file. The bot's own code reads either
+  form where it handles raw IDs (member lists, join requests, community parent, the
+  in-page deletion check). The router warns once per run when a message has no
+  readable ID or chat ID. After npm, the installer compares installed direct
+  dependencies with package-lock.json and stops on a mismatch, including after
+  --skip-npm.
+- Library diff checked for what the bot calls: Message.delete, setMessagesAdminsOnly
+  and the join-request functions are unchanged; removeParticipants and
+  getContactLidAndPhone change only by the $1 fallback; LocalAuth is unchanged, so the
+  existing linked session should restore. Upstream reworked the startup code.
+- Results: node --test 220/220; tools/e2e/run.js 11/11; tools/test_installer.py 9/9.
+  The new test/id-rename.test.js fails 3 of 7 against npm's 1.34.7 (the host's
+  symptom). Reverting each of the 6 code fixes, one at a time, is caught. A new
+  admin test runs kick (confirmed only by the removal notice), the admin check and
+  join screening with IDs in the $1 form only.
+- Independent review (fresh context): SHIP. The vendored package matches upstream
+  064a3d5 file for file except the version; no raw ID read was missed; 219/219 and
+  11/11 also on Node 22.23.4, the host's version. Its follow-ups are applied: a
+  clearer installer message if the reinstall's npm run fails, authTimeoutMs raised
+  to 120000 because the new startup code also waits that long for the connection,
+  and the startup-history filter now runs before the unreadable-message warning.
+- Fake host laid out like PythonAnywhere (20261030-2 code, npm's 1.34.7 from the
+  registry, Node without bin/npm): the installer ran npm through npm-cli.js, npm
+  replaced the library, candidate checks passed, INSTALLED. With the old library and
+  --skip-npm it stops and leaves live config unchanged.
+- Still not run: the new library against real WhatsApp (startup, receiving, sending,
+  deleting, kicking, join answers) and on the host.
+
+First real install on PythonAnywhere, 4 November 2026
+- The 20261030-2 installer stopped at "no npm found in .../shared-bot-task/node/bin"
+  after backing up and copying code; live config was left unchanged, as designed.
+  The private Node apparently lacks the bin/npm link (likely lost when it was
+  unpacked). The local installer now falls back to
+  node/lib/node_modules/npm/bin/npm-cli.js run by that Node; tested on a fake
+  layout, not yet on the host. The 20261030-2 zip on the host predates this fix.
+- The owner then ran npm by full path (node/bin/node .../npm-cli.js install
+  --ignore-scripts: "added 8 packages") and reran the installer with --skip-npm.
+  On the host's own Node: node --test 212/212, tools/e2e/run.js 11/11; merged
+  config saved; worker state still waiting_for_arm. INSTALLED.
+- Backups on the host: 20261104-202347-131585 holds the original code and config;
+  20261104-203439-343801 holds the new code with the original config.
+- Still not run: QR linking, real chats, discovery, arming, any real WhatsApp action.
+
+Independent checks of the second-round fixes, 30 October 2026 (Windows, by a
+different reviewer from the author; no real WhatsApp, API, npm install or host)
+- Reran: node --test 212/212 on Node 26.4.0 and 22.22.1 (the host runs 22.23.4);
+  tools/e2e/run.js 11/11 on both; tools/test_installer.py 8/8 on Node 26.4.0.
+- Separate probes against the real modules, outside the test suite: the phrase no
+  longer hides spam from a member (plain, upper case, fullwidth); owner discovery
+  records the ID, posts nothing, enables nothing; unlisted chats cost no lookup,
+  file, log or reply; silence opens per chat; a hand-removed chosen group is ignored
+  and groupIds stays non-empty; true legacy groupIds still work.
+- Deliberately broke the code 46 ways, one at a time: unit tests caught 38. Of the
+  other 8, the end-to-end run caught 4 (per-chat warnings, both bot.js guard wirings,
+  a startup message). The last 4 are not gaps: three are backup checks with another
+  check still covering the case, and one changes a default the shipped config sets.
+  14 older cases no longer applied because the code changed; the guard cases among
+  them were replaced with new ones.
+
+Second review: local regression verification, 30 October 2026
+Windows; Node.js v26.4.0; Python 3.12.14 (bundled local interpreter).
+Sandbox only. No network, real host/service changes, commits or publication.
+
+REVIEW FINDINGS
+All nine must-fix reports were confirmed against the original code. No substantive
+review finding was rejected. Daily/hourly AI budgets, busy/receive/caller checks,
+minimum interval and maxRetries: 0 already existed; their coverage was incomplete.
+The old rollback test was masked by the hourly cap; the new test isolates rollback
+from hourly/daily caps, per-chat cooldown and the minimum-interval check.
+
+Fix / executable evidence:
+1. Discovery swallows only the owner's exact text phrase. Other reserved phrases
+   retain moderation/archive handling and suppress only command replies. Owner
+   near misses print an exact-phrase hint. Prefixes cannot hide blocked links,
+   including upper/fullwidth/invisible forms and image captions.
+   test/router.test.js: reserved discovery phrases; test/discovery.test.js.
+2. README and installer now give console start (QR/discover/Ctrl+C), then choose
+   using private Node/CHROME_PATH/SPAM_BOT_NO_SANDBOX=1, then reviewed arm.
+   At least one group is needed; direct-only setups cannot arm. The unchanged
+   local supervisor's readiness predicate was inspected, not executed.
+   tools/test_installer.py checks printed order, environment and shared CHROME_PATH.
+3. Failed installs and retries retain live config byte for byte. Tests run in a
+   disposable candidate using shipped defaults; merged settings are validated
+   before an atomic config replacement. Two actual failed Node-test installations,
+   a simulated merged-config rejection and a successful custom-config retry are
+   exercised by tools/test_installer.py.
+4. Backups contain code/config only plus a manifest of added files. Actual --undo
+   restores old code/config and removes added files without reverting current
+   .runtime, data, logs, auth, node_modules or .env. Installer tests preserve a
+   block pause, AI attempts/counters, new learned spam/logs and dependency/session
+   bytes across undo. No live backup or undo was performed.
+5. Sending opens separately per chat after a successful owner command reply and
+   resets on start. Discovery does not open it. test/router.test.js and the real
+   bot wiring under tools/e2e/run.js cover warnings before/after that reply and
+   silence in another chat. Removing bot.js's moderator guard wiring is caught.
+6. saveChats records managedGroupIds alongside groupIds mirrors. Removing a
+   managed chats entry leaves no legacy policy; true legacy groups still work.
+   test/chats.test.js covers save, hand edit, reload, removal and legacy fallback;
+   test/router.test.js covers ignored traffic after removal. Installer migrates
+   earlier chooser mirrors. The supervisor itself was not changed.
+7. Installer deep-merges owner values, replacing lists whole except strictRules,
+   which merge by name. Owner delete actions, thresholds, keywords, replyPrefix,
+   shorteners and budgets survive; new keys/rules arrive; missing deletion.mode
+   becomes strict. tools/test_installer.py checks pure merge and actual install.
+8. Channels remain discovery metadata only. The chooser refuses number/ID channel
+   selections with a receipt-unverified message and keeps prior/later answers.
+   test/archive.test.js covers that session; channel support was not added.
+9. Corrupt discovery metadata is warned about and set aside before continuing;
+   test/discovery.test.js covers malformed JSON, object/entry shape errors and
+   successful later discovery. Lookup identity mismatches and invalid chat IDs
+   cannot write metadata. A hung lookup times out and later routing continues.
+
+OTHER FIXES AND COVERAGE
+- Completed summaries survive reply-budget exhaustion as full terminal output:
+  test/router.test.js runs a slow provider while another command spends the budget.
+- summary.maxTranscriptChars defaults to 60000. Tests exercise both this cap and
+  maxMessages, newest whole messages, and a single oversized message's newest tail.
+  Actual AI requests and local summary dry runs use the bounded renderer.
+- Dead CLI-summary locks are reclaimed only after their process is dead, retaining
+  pauses/budgets; live locks and worker crash locks remain protected. Unit tests
+  cover state/locking and E2E uses an actually exited child PID.
+- Tests independently exercise daily budget, busy check, SDK retry configuration,
+  discovery identity/ID validation, chooser AI default off, receive, minimum AI
+  interval, rollback, NFKC buzzword cleaning and callers: me (router and AI service
+  with summary.ownerOnly off). Existing detector normalization tests are retained.
+- Silent E2E start/restart use spam: delete and joinRequests: screen group policies
+  with warnings enabled. They assert no posted message, automatic deletion before
+  an owner test, and startup approval in the first silent scenario. Fake message
+  IDs are unique per run so persistent duplicate-removal guards remain meaningful.
+- Automatic deletion and startup join approval were intentionally not delayed by
+  the send guard. README states they can act before an owner test only where the
+  chat explicitly enables delete/screen, with existing permissions and budgets.
+
+RESULTS
+PASS node --test: 212 tests, 212 pass, 0 fail, 0 skipped.
+PASS node tools/e2e/run.js: 11 scenarios, all pass (simulated WhatsApp client).
+PASS python -I tools/test_installer.py <project>: 8 scenarios, all pass; real
+     Node tests (212/212) and E2E (11/11) run inside the staged installation.
+     Real npm is skipped; no Linux or real host installation was attempted.
+PASS node tools/check_guard_mutations.js: 16/16 mutations killed in disposable
+     copies, including the full simulated E2E check with bot warning wiring removed.
+     These are targeted checks, not a repeat of the independent review's 53 cases.
+
+DELIVERY
+whatsapp-spam-bot-update-20261030-2.zip, built with tools/make_zip.py.
+Contains source/tests/tools/default config/docs; excludes node_modules, sessions,
+runtime state, data, logs, .env, credentials and Python caches. Installer docstring
+and README use that exact zip filename. The README has the exact install and
+subsequent console discovery/chooser/arming commands. Only this project and the
+allowed work directory were written; ../shared-bot-task was not edited.
+
+STILL UNVERIFIED
+Real WhatsApp QR login, receipt/discovery/chat listing, sends/quotes/deletion,
+kicks/locks/join answers and ID resolution; channel receipt; the Claude API/model;
+real npm installation, PythonAnywhere/Linux/hosted Node 22, linked-account resource
+use and the host's current state. Tests use simulated clients and providers; they
+do not establish real delivery, account safety or field accuracy. No account was
+linked, no real message sent/deleted, and no supervisor/Telegram/WhatsApp service
+was changed. No automatic AI replies were added.

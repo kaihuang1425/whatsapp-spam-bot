@@ -1,0 +1,11 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+.browser-cache/
+logs/
+.runtime/
+config.local.json
+*.zip
+data/
+hubs/
+.env

@@ -1,0 +1,37 @@
+{
+  "name": "whatsapp-spam-detector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WhatsApp bot for chosen chats: per-chat receive/send/buzzword, strict spam deletion, local archive and optional Claude summaries",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/cli.js start",
+    "setup": "node src/cli.js setup",
+    "choose": "node src/cli.js choose",
+    "chats": "node src/cli.js chats",
+    "groups": "node src/cli.js groups",
+    "status": "node src/cli.js status",
+    "transcript": "node src/cli.js transcript",
+    "summarise": "node src/cli.js summarise",
+    "condense": "node src/cli.js condense",
+    "notes": "node src/cli.js notes",
+    "issues": "node src/cli.js issues",
+    "detect": "node src/cli.js detect",
+    "instructions": "node src/cli.js instructions",
+    "github": "node src/cli.js github",
+    "google": "node src/cli.js google",
+    "ideas": "node src/cli.js ideas",
+    "sync": "node src/cli.js sync",
+    "demo": "node src/cli.js demo",
+    "check": "node src/cli.js check",
+    "resume": "node src/cli.js resume",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.134.0",
+    "qrcode-terminal": "0.12.0",
+    "whatsapp-web.js": "file:vendor/whatsapp-web.js-1.34.7-main.064a3d5.tgz"
+  }
+}
